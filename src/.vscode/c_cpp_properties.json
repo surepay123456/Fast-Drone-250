@@ -1,0 +1,38 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "${default}",
+                "limitSymbolsToIncludedHeaders": false
+            },
+            "includePath": [
+                "/home/xep/Fast-Drone-250/devel/include/**",
+                "/opt/ros/noetic/include/**",
+                "/home/xep/Fast-Drone-250/src/planner/bspline_opt/include/**",
+                "/home/xep/Fast-Drone-250/src/realflight_modules/VINS-Fusion/camera_models/include/**",
+                "/home/xep/Fast-Drone-250/src/utils/DecompROS/decomp_ros_utils/include/**",
+                "/home/xep/Fast-Drone-250/src/planner/drone_detect/include/**",
+                "/home/xep/Fast-Drone-250/src/planner/plan_manage/include/**",
+                "/home/xep/Fast-Drone-250/src/uav_simulator/mockamap/include/**",
+                "/home/xep/Fast-Drone-250/src/planner/path_searching/include/**",
+                "/home/xep/Fast-Drone-250/src/planner/plan_env/include/**",
+                "/home/xep/Fast-Drone-250/src/utils/pose_utils/include/**",
+                "/home/xep/Fast-Drone-250/src/utils/quadrotor_msgs/include/**",
+                "/home/xep/Fast-Drone-250/src/realflight_modules/realsense-ros/realsense2_camera/include/**",
+                "/home/xep/Fast-Drone-250/src/uav_simulator/so3_control/include/**",
+                "/home/xep/Fast-Drone-250/src/uav_simulator/so3_quadrotor_simulator/include/**",
+                "/home/xep/Fast-Drone-250/src/planner/traj_utils/include/**",
+                "/home/xep/Fast-Drone-250/src/utils/uav_utils/include/**",
+                "/usr/include/**",
+                "${workspaceFolder}/planner/plan_env/include",
+                "${workspaceFolder}/planner/plan_manage/include"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "c++14"
+        }
+    ],
+    "version": 4
+}
