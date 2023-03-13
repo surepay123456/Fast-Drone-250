@@ -10,4 +10,4 @@ rosbag record --tcpnodelay \
 /vins_fusion/path \
 /vins_fusion/odometry \
 /camera/infra1/image_rect_raw \
-/position_cmd \
+/position_cmd 
