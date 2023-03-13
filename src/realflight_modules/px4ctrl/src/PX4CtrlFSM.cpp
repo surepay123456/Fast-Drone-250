@@ -473,11 +473,15 @@ void PX4CtrlFSM::set_hov_with_rc()
 	ros::Time now = ros::Time::now();
 	double delta_t = (now - last_set_hover_pose_time).toSec();
 	last_set_hover_pose_time = now;
-
-	hover_pose(0) += rc_data.ch[1] * param.max_manual_vel * delta_t * (param.rc_reverse.pitch ? 1 : -1);
+	//change the rc channel
+	hover_pose(0) += rc_data.ch[2] * param.max_manual_vel * delta_t * (param.rc_reverse.pitch ? 1 : -1);
 	hover_pose(1) += rc_data.ch[0] * param.max_manual_vel * delta_t * (param.rc_reverse.roll ? 1 : -1);
-	hover_pose(2) += rc_data.ch[2] * param.max_manual_vel * delta_t * (param.rc_reverse.throttle ? 1 : -1);
+	hover_pose(2) += rc_data.ch[1] * param.max_manual_vel * delta_t * (param.rc_reverse.throttle ? 1 : -1);
 	hover_pose(3) += rc_data.ch[3] * param.max_manual_vel * delta_t * (param.rc_reverse.yaw ? 1 : -1);
+	// hover_pose(0) += rc_data.ch[1] * param.max_manual_vel * delta_t * (param.rc_reverse.pitch ? 1 : -1);
+	// hover_pose(1) += rc_data.ch[0] * param.max_manual_vel * delta_t * (param.rc_reverse.roll ? 1 : -1);
+	// hover_pose(2) += rc_data.ch[2] * param.max_manual_vel * delta_t * (param.rc_reverse.throttle ? 1 : -1);
+	// hover_pose(3) += rc_data.ch[3] * param.max_manual_vel * delta_t * (param.rc_reverse.yaw ? 1 : -1);
 
 	if (hover_pose(2) < -0.3)
 		hover_pose(2) = -0.3;
