@@ -49,6 +49,7 @@ namespace ego_planner
 
     PlanParameters pp_;
     LocalTrajData local_data_;
+    LocalTrajData last_local_data_;
     GlobalTrajData global_data_;
     GridMap::Ptr grid_map_;
     fast_planner::ObjPredictor::Ptr obj_predictor_;    
@@ -64,6 +65,8 @@ namespace ego_planner
 
     int continous_failures_count_{0};
 
+    // get traj TODO: save the last traj  which is in the local_data_
+    void updateYawTraj(const UniformBspline & last_position_traj,  UniformBspline& position_traj);
     void updateTrajInfo(const UniformBspline &position_traj, const ros::Time time_now);
 
     void reparamBspline(UniformBspline &bspline, vector<Eigen::Vector3d> &start_end_derivative, double ratio, Eigen::MatrixXd &ctrl_pts, double &dt,

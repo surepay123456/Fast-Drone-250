@@ -4,6 +4,8 @@
 #include "quadrotor_msgs/PositionCommand.h"
 #include "std_msgs/Empty.h"
 #include "visualization_msgs/Marker.h"
+#include <qt5/QtCore/qnamespace.h>
+#include <ros/forwards.h>
 #include <ros/ros.h>
 
 ros::Publisher pos_cmd_pub;
@@ -27,7 +29,6 @@ double time_forward_;
 void bsplineCallback(traj_utils::BsplineConstPtr msg)
 {
   // parse pos traj
-
   Eigen::MatrixXd pos_pts(3, msg->pos_pts.size());
 
   Eigen::VectorXd knots(msg->knots.size());
@@ -160,6 +161,25 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, ros:
 
   return yaw_yawdot;
 }
+
+
+// convert Bspline to RPG point list 
+void convertBspline2traj(const UniformBspline & spline, const double & dt){
+
+  // first get all points by interval dt with spline
+
+  // use p v a  j and yaw to calculate q 
+
+
+}
+
+// add perception model 
+// void refinePeceptionTraj( & traj , const ) 
+
+
+// trajCallback 
+// void trajCallback(const ros::TimerEvent & e)
+
 
 void cmdCallback(const ros::TimerEvent &e)
 {

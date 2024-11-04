@@ -24,7 +24,8 @@ namespace ego_planner
     nh.param("manager/planning_horizon", pp_.planning_horizen_, 5.0);
     nh.param("manager/use_distinctive_trajs", pp_.use_distinctive_trajs, false);
     nh.param("manager/drone_id", pp_.drone_id, -1);
-
+    
+    last_local_data_.traj_id_ = -1;
     local_data_.traj_id_ = 0;
     grid_map_.reset(new GridMap);
     grid_map_->initMap(nh);
@@ -325,7 +326,13 @@ namespace ego_planner
 
     t_refine = ros::Time::now() - t_start;
 
-    // save planned results
+    // save planned results 
+    // use last traj to refine yaw
+    
+    // get rpg traj , from bspline , and calculate yaw  
+
+    // traj server do this ? 
+    
     updateTrajInfo(pos, ros::Time::now());
 
     static double sum_time = 0;
@@ -541,6 +548,11 @@ namespace ego_planner
 
   void EGOPlannerManager::updateTrajInfo(const UniformBspline &position_traj, const ros::Time time_now)
   {
+    // get last traj
+    last_local_data_.start_time_ = local_data_.start_time_;
+    last_local_data_.position_traj_ = position_traj;
+    last_local_data_.traj_id_ = local_data_.traj_id_;
+    // now traj update
     local_data_.start_time_ = time_now;
     local_data_.position_traj_ = position_traj;
     local_data_.velocity_traj_ = local_data_.position_traj_.getDerivative();
