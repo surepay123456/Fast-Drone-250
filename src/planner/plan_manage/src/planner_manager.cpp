@@ -272,11 +272,12 @@ namespace ego_planner
     else
     {
       flag_step_1_success = bspline_optimizer_->BsplineOptimizeTrajRebound(ctrl_pts, ts);
+      // get some control points yaw, the vel bslpine? and the dmin TODO:
       t_opt = ros::Time::now() - t_start;
       //static int vis_id = 0;
       visualization_->displayInitPathList(point_set, 0.2, 0);
     }
-
+      // refine yaw traj using bslpine 
     cout << "plan_success=" << flag_step_1_success << endl;
     if (!flag_step_1_success)
     {
@@ -332,7 +333,7 @@ namespace ego_planner
     // get rpg traj , from bspline , and calculate yaw  
 
     // traj server do this ? 
-    
+    // yaw spline and pos spline
     updateTrajInfo(pos, ros::Time::now());
 
     static double sum_time = 0;

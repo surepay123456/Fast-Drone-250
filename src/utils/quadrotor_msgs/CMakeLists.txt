@@ -10,9 +10,13 @@ find_package(catkin REQUIRED COMPONENTS
 #  cmake_utils
 )
 
+find_package(Eigen3 REQUIRED)
+include_directories(${EIGEN3_INCLUDE_DIR})
+
 include_directories(
     ${catkin_INCLUDE_DIRS}
     include
+    # ${PROJECT_SOURCE_DIR}/include()
     )
 
 
@@ -42,6 +46,10 @@ add_message_files(
   SwarmInfo.msg
   Px4ctrlDebug.msg
   TakeoffLand.msg
+
+  #RPQ msg 
+  Trajectory.msg
+  TrajectoryPoint.msg
 )
 
 generate_messages(
@@ -51,7 +59,7 @@ generate_messages(
 )
 
 catkin_package(
-  #INCLUDE_DIRS include
+  INCLUDE_DIRS include
   LIBRARIES encode_msgs decode_msgs
   #CATKIN_DEPENDS geometry_msgs nav_msgs
   #DEPENDS system_lib
@@ -66,8 +74,6 @@ add_library(encode_msgs src/encode_msgs.cpp)
 add_dependencies(encode_msgs quadrotor_msgs_generate_messages_cpp)
 add_dependencies(decode_msgs quadrotor_msgs_generate_messages_cpp)
 
-find_package(Eigen3 REQUIRED)
-include_directories(${EIGEN3_INCLUDE_DIR})
 
 
 # target_link_libraries(test_exe 
