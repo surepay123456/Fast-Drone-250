@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   traj_utils
   message_generation
   cv_bridge
+  quadrotor_common
 )
 
 # catkin_package(CATKIN_DEPENDS message_runtime)
@@ -33,7 +34,7 @@ catkin_package(
 include_directories(
   include
   SYSTEM
-  ${catkin_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/include
+  ${catkin_INCLUDE_DIRS} 
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
 )
