@@ -791,8 +791,20 @@ namespace ego_planner
       {
         bspline.knots.push_back(knots(i));
       }
-
+      // std::cout << "come to here 1" << std::endl;
+      bspline.d_min = info->d_min_;
+      Eigen::MatrixXd yaw_pts = info->yaw_traj_.getControlPoint();
+      bspline.yaw_traj.reserve(yaw_pts.rows());
+      // std::cout << "come to mid" << std::endl;
+      for (int i = 0; i < yaw_pts.rows(); i++) {
+        geometry_msgs::Vector3 pt;
+        pt.x =  yaw_pts(0, i);
+        pt.y = yaw_pts(1, i);
+        // pt.z = yaw_pts(2, i);
+        bspline.yaw_traj.push_back(pt);
+      }
       /* 1. publish traj to traj_server */
+      // std::cout << "come to here 2" << std::endl;
       bspline_pub_.publish(bspline);
 
       /* 2. publish traj to the next drone of swarm */
@@ -884,6 +896,17 @@ namespace ego_planner
     for (int i = 0; i < knots.rows(); ++i)
     {
       bspline.knots.push_back(knots(i));
+    }
+  
+    bspline.d_min = info->d_min_;
+    Eigen::MatrixXd yaw_pts = info->yaw_traj_.getControlPoint();
+    bspline.yaw_traj.reserve(yaw_pts.rows());
+    for (int i = 0; i < yaw_pts.rows(); i++) {
+      geometry_msgs::Vector3 pt;
+      pt.x =  yaw_pts(0, i);
+      pt.y = yaw_pts(1, i);
+      // pt.z = yaw_pts(2, i);
+      bspline.yaw_traj.push_back(pt);
     }
 
     bspline_pub_.publish(bspline);

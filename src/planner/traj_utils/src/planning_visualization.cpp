@@ -1,4 +1,5 @@
 #include <traj_utils/planning_visualization.h>
+#include <visualization_msgs/Marker.h>
 
 using std::cout;
 using std::endl;
@@ -13,6 +14,7 @@ namespace ego_planner
     init_list_pub = nh.advertise<visualization_msgs::Marker>("init_list", 2);
     optimal_list_pub = nh.advertise<visualization_msgs::Marker>("optimal_list", 2);
     a_star_list_pub = nh.advertise<visualization_msgs::Marker>("a_star_list", 20);
+    yaw_traj_pub = nh.advertise<visualization_msgs::Marker>("yaw_traj_list", 2);
   }
 
   // // real ids used: {id, id+1000}

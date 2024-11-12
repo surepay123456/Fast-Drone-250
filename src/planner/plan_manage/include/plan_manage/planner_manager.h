@@ -46,10 +46,15 @@ namespace ego_planner
 
     bool checkCollision(int drone_id);
     
+    /*yaw vis */
+    void drawYawTraj(UniformBspline& pos, UniformBspline& yaw, const double& dt);
+    void displayLineList(const vector<Eigen::Vector3d>& list1, const vector<Eigen::Vector3d>& list2,
+                        double line_width, const Eigen::Vector4d& color, int id);
 
     PlanParameters pp_;
     LocalTrajData local_data_;
-    LocalTrajData last_local_data_;
+    double   d_min_;
+    
     GlobalTrajData global_data_;
     GridMap::Ptr grid_map_;
     fast_planner::ObjPredictor::Ptr obj_predictor_;    
@@ -60,14 +65,16 @@ namespace ego_planner
     PlanningVisualization::Ptr visualization_;
 
     // ros::Publisher obj_pub_; //zx-todo 
+    ros::Publisher yaw_traj_pub;
 
     BsplineOptimizer::Ptr bspline_optimizer_;
 
     int continous_failures_count_{0};
 
-    // get traj TODO: save the last traj  which is in the local_data_
+    // get traj TODO: save the last traj  which is in the local_data_ 
+    // TODO: get the Bspines pairs, and refine yaw 
     void updateYawTraj(const UniformBspline & last_position_traj,  UniformBspline& position_traj);
-    void updateTrajInfo(const UniformBspline &position_traj, const ros::Time time_now);
+    void updateTrajInfo(const UniformBspline &position_traj,const UniformBspline & yaw_traj, const double d_min, const ros::Time time_now);
 
     void reparamBspline(UniformBspline &bspline, vector<Eigen::Vector3d> &start_end_derivative, double ratio, Eigen::MatrixXd &ctrl_pts, double &dt,
                         double &time_inc);

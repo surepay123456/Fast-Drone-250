@@ -25,7 +25,6 @@ namespace ego_planner
     nh.param("manager/use_distinctive_trajs", pp_.use_distinctive_trajs, false);
     nh.param("manager/drone_id", pp_.drone_id, -1);
     
-    last_local_data_.traj_id_ = -1;
     local_data_.traj_id_ = 0;
     grid_map_.reset(new GridMap);
     grid_map_->initMap(nh);
@@ -39,6 +38,8 @@ namespace ego_planner
     bspline_optimizer_->setEnvironment(grid_map_, obj_predictor_);
     bspline_optimizer_->a_star_.reset(new AStar);
     bspline_optimizer_->a_star_->initGridMap(grid_map_, Eigen::Vector3i(100, 100, 100));
+    // add traj yaw vis 
+    yaw_traj_pub = nh.advertise<visualization_msgs::Marker>("/planning_vis/yaw", 100);
 
     visualization_ = vis;
   }
@@ -273,6 +274,7 @@ namespace ego_planner
     {
       flag_step_1_success = bspline_optimizer_->BsplineOptimizeTrajRebound(ctrl_pts, ts);
       // get some control points yaw, the vel bslpine? and the dmin TODO:
+      // ControlPoints pts = bspline_optimizer_->getControlPoints();
       t_opt = ros::Time::now() - t_start;
       //static int vis_id = 0;
       visualization_->displayInitPathList(point_set, 0.2, 0);
@@ -289,11 +291,63 @@ namespace ego_planner
     t_start = ros::Time::now();
 
     UniformBspline pos = UniformBspline(ctrl_pts, 3, ts);
+    // use vel to get yaw , 因为是使用均匀dt 那么直接索引 dt * i 就可以得到相应yaw
+    UniformBspline vel = pos.getDerivative();
+    Eigen::MatrixXd yaw(2, ctrl_pts.cols());
+    // std::cout << "Initialized yaw matrix with size: " << yaw.rows() << "x" << yaw.cols() << std::endl;
+    for (int i = 0; i < ctrl_pts.cols(); ++i) {
+      Eigen::Vector3d velocity = vel.evaluateDeBoorT(i  * ts);
+      // std::cout << "Velocity at index " << i << ": " << velocity.transpose() << std::endl;
+      Eigen::Vector2d horizeon_vel(velocity(0), velocity(1));
+      horizeon_vel =  horizeon_vel.normalized();
+      yaw(0, i) = horizeon_vel(0);
+      yaw(1, i) = horizeon_vel(1);
+      // std::cout << "Yaw at index " << i << ": " << yaw(0, i) << ", " << yaw(1, i) << std::endl;
+    } 
+    // pos是三阶 vel就是二阶 yaw也是二阶
+    ControlPoints cps = bspline_optimizer_->getControlPoints();
+    // use base points and direction to refine yaw, get the min_dis
+    double min_dis = std::numeric_limits<double>::max(); 
+    // 首尾的yaw 不再固定
+    for (auto i = 0; i < ctrl_pts.cols() - 1; i++)
+    {
+      // std::cout << "index" << i << std::endl; 
+      // 单个control point 可能被几个base_point影响
+      for (size_t j = 0; j < cps.direction[i].size(); ++j)
+      {
+        // start and end case  
+        double dist = (cps.points.col(i) - cps.base_point[i][j]).dot(cps.direction[i][j]);
+        // std::cout << "Distance at index " << i << ", " << j << ": " << dist << std::endl;
+        // std::cout << "point :" << cps.points.col(i).transpose() << " base" << cps.base_point[i][j].transpose()<< std::endl;
+        if (dist < min_dis) {
+          min_dis = dist;
+        }
+        // double dist_err = cps.clearance - dist;
+        Eigen::Vector3d dist_grad = cps.direction[i][j];
+        // use dist_grad refine yaw, use dist to cal the lamda 
+        // std::cout << "pre yaw at index " << i << ": " << yaw(0, i) << ", " << yaw(1, i) << std::endl;
+        yaw(0, i) +=  - dist * dist_grad(0); 
+        yaw(1, i) +=  - dist * dist_grad(1); 
+        // std::cout << "Refined yaw at index " << i << ": " << yaw(0, i) << ", " << yaw(1, i) << std::endl;
+      }
+      // normalize yaw.col(i)
+      Eigen::Vector2d horizeon_vel(yaw(0, i), yaw(1, i));
+      horizeon_vel = horizeon_vel.normalized();
+      yaw(0, i) = horizeon_vel(0);
+      yaw(1, i) = horizeon_vel(1);
+      // std::cout << "Normalized yaw at index " << i << ": " << yaw(0, i) << ", " << yaw(1, i) << std::endl;
+    }
+    // output of yaw_bspline 
+    UniformBspline yaw_bspline = UniformBspline(yaw, 2, ts);
+    // display the yaw  use fuel methods 
+    drawYawTraj(pos, yaw_bspline, ts);
+
     pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
 
     /*** STEP 3: REFINE(RE-ALLOCATE TIME) IF NECESSARY ***/
     // Note: Only adjust time in single drone mode. But we still allow drone_0 to adjust its time profile.
-    if (pp_.drone_id <= 0)
+    // if (pp_.drone_id <= 0)
+    if (false)
     {
 
       double ratio;
@@ -328,13 +382,7 @@ namespace ego_planner
     t_refine = ros::Time::now() - t_start;
 
     // save planned results 
-    // use last traj to refine yaw
-    
-    // get rpg traj , from bspline , and calculate yaw  
-
-    // traj server do this ? 
-    // yaw spline and pos spline
-    updateTrajInfo(pos, ros::Time::now());
+    updateTrajInfo(pos,yaw_bspline,d_min_, ros::Time::now());
 
     static double sum_time = 0;
     static int count_success = 0;
@@ -350,12 +398,14 @@ namespace ego_planner
   bool EGOPlannerManager::EmergencyStop(Eigen::Vector3d stop_pos)
   {
     Eigen::MatrixXd control_points(3, 6);
+    Eigen::MatrixXd yaw_control_points(2, 6);
     for (int i = 0; i < 6; i++)
     {
       control_points.col(i) = stop_pos;
+      yaw_control_points.col(i) = Eigen::Vector2d(1, 0);
     }
 
-    updateTrajInfo(UniformBspline(control_points, 3, 1.0), ros::Time::now());
+    updateTrajInfo(UniformBspline(control_points, 3, 1.0), UniformBspline(yaw_control_points, 2, 1.0), 0.5, ros::Time::now());
 
     return true;
   }
@@ -547,12 +597,8 @@ namespace ego_planner
     return success;
   }
 
-  void EGOPlannerManager::updateTrajInfo(const UniformBspline &position_traj, const ros::Time time_now)
+  void EGOPlannerManager::updateTrajInfo(const UniformBspline &position_traj, const UniformBspline & yaw_traj,const double d_min, const ros::Time time_now)
   {
-    // get last traj
-    last_local_data_.start_time_ = local_data_.start_time_;
-    last_local_data_.position_traj_ = position_traj;
-    last_local_data_.traj_id_ = local_data_.traj_id_;
     // now traj update
     local_data_.start_time_ = time_now;
     local_data_.position_traj_ = position_traj;
@@ -561,6 +607,9 @@ namespace ego_planner
     local_data_.start_pos_ = local_data_.position_traj_.evaluateDeBoorT(0.0);
     local_data_.duration_ = local_data_.position_traj_.getTimeSum();
     local_data_.traj_id_ += 1;
+    // yaw traj and dmin update 
+    local_data_.yaw_traj_ = yaw_traj; 
+    local_data_.d_min_ = d_min_;
   }
 
   void EGOPlannerManager::reparamBspline(UniformBspline &bspline, vector<Eigen::Vector3d> &start_end_derivative, double ratio,
@@ -584,4 +633,59 @@ namespace ego_planner
     UniformBspline::parameterizeToBspline(dt, point_set, start_end_derivative, ctrl_pts);
   }
 
+  void EGOPlannerManager::drawYawTraj(UniformBspline& pos, UniformBspline& yaw,
+                                        const double& dt) {
+    double duration = pos.getTimeSum();
+    vector<Eigen::Vector3d> pts1, pts2;
+
+    for (double tc = 0.0; tc <= duration + 1e-3; tc += dt) {
+      Eigen::Vector3d pc = pos.evaluateDeBoorT(tc);
+      pc[2] += 0.15;
+      Eigen::Vector2d yc = yaw.evaluateDeBoorT(tc);
+      Eigen::Vector3d dir(yc[0], yc[1], 0);
+      Eigen::Vector3d pdir = pc + 1.0 * dir;
+      pts1.push_back(pc);
+      pts2.push_back(pdir);
+    }
+    displayLineList(pts1, pts2, 0.04, Eigen::Vector4d(1, 0.5, 0, 1), 0);
+  }
+  void EGOPlannerManager::displayLineList(const vector<Eigen::Vector3d>& list1,
+                                              const vector<Eigen::Vector3d>& list2, double line_width,
+                                              const Eigen::Vector4d& color, int id) {
+    visualization_msgs::Marker mk;
+    mk.header.frame_id = "world";
+    mk.header.stamp = ros::Time::now();
+    mk.type = visualization_msgs::Marker::LINE_LIST;
+    mk.action = visualization_msgs::Marker::DELETE;
+    mk.id = id;
+    yaw_traj_pub.publish(mk);
+
+    mk.action = visualization_msgs::Marker::ADD;
+    mk.pose.orientation.x = 0.0;
+    mk.pose.orientation.y = 0.0;
+    mk.pose.orientation.z = 0.0;
+    mk.pose.orientation.w = 1.0;
+
+    mk.color.r = color(0);
+    mk.color.g = color(1);
+    mk.color.b = color(2);
+    mk.color.a = color(3);
+    mk.scale.x = line_width;
+
+    geometry_msgs::Point pt;
+    for (int i = 0; i < int(list1.size()); ++i) {
+      pt.x = list1[i](0);
+      pt.y = list1[i](1);
+      pt.z = list1[i](2);
+      mk.points.push_back(pt);
+
+      pt.x = list2[i](0);
+      pt.y = list2[i](1);
+      pt.z = list2[i](2);
+      mk.points.push_back(pt);
+    }
+    yaw_traj_pub.publish(mk);
+
+    ros::Duration(0.0005).sleep();
+  }
 } // namespace ego_planner
