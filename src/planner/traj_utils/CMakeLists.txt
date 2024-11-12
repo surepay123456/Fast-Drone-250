@@ -6,7 +6,6 @@ set(CMAKE_CXX_FLAGS "-std=c++11")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
 
 find_package(catkin REQUIRED COMPONENTS
-  #bspline_opt
   #path_searching
   roscpp
   std_msgs

@@ -24,7 +24,7 @@ namespace ego_planner
     double clearance;
     int size;
     Eigen::MatrixXd points;
-    std::vector<std::vector<Eigen::Vector3d>> base_point; // The point at the statrt of the direction vector (collision point)
+    std::vector<std::vector<Eigen::Vector3d>> base_point; // The point at the start of the direction vector (collision point)
     std::vector<std::vector<Eigen::Vector3d>> direction;  // Direction vector, must be normalized.
     std::vector<bool> flag_temp;                          // A flag that used in many places. Initialize it everytime before using it.
     // std::vector<bool> occupancy;
@@ -81,7 +81,6 @@ namespace ego_planner
       //   }
     }
   };
-
   class BsplineOptimizer
   {
 

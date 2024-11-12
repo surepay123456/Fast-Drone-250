@@ -1375,7 +1375,7 @@ namespace ego_planner
             }
 
           for (int j = got_intersection_id - 1; j >= segment_ids[i].first; --j)
-            if (!cps_.flag_temp[j])
+            if (!cps_.flag_temp[j]) 
             {
               cps_.base_point[j].push_back(cps_.base_point[j + 1].back());
               cps_.direction[j].push_back(cps_.direction[j + 1].back());

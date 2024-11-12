@@ -3,7 +3,6 @@
 
 #include <Eigen/Eigen>
 #include <algorithm>
-//#include <bspline_opt/uniform_bspline.h>
 #include <iostream>
 //#include <bspline_opt/polynomial_traj.h>
 #include <ros/ros.h>
@@ -27,6 +26,7 @@ namespace ego_planner
     ros::Publisher a_star_list_pub;
     ros::Publisher guide_vector_pub;
     ros::Publisher intermediate_state_pub;
+    ros::Publisher yaw_traj_pub;
 
   public:
     PlanningVisualization(/* args */) {}
