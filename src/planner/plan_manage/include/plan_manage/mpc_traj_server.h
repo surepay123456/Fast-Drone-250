@@ -4,9 +4,7 @@
 #include <quadrotor_common/trajectory.h>
 #include <quadrotor_common/trajectory_point.h>
 #include <quadrotor_msgs/Trajectory.h>
-#include <ros/forwards.h>
 #include <ros/ros.h>
-#include <ros/timer.h>
 
 #include <cstdint>
 #include <utility>
@@ -18,11 +16,13 @@
 #include "std_msgs/Empty.h"
 #include "traj_utils/Bspline.h"
 #include "visualization_msgs/Marker.h"
+#include <quadrotor_msgs/Trajectory.h>
 using ego_planner::UniformBspline;
 class MpcTrajServer {
    public:
     ros::Subscriber bspine_sub;
     ros::Publisher pos_cmd_pub;
+    ros::Publisher traj_cmd_pub;
     ros::Timer cmd_timer;
 
     quadrotor_msgs::PositionCommand cmd;
@@ -38,9 +38,9 @@ class MpcTrajServer {
     double last_yaw_, last_yaw_dot_;
     double time_forward_;
 
-    quadrotor_common::Trajectory common_traj_now_;
-    quadrotor_common::Trajectory common_traj_last_;
     MpcTrajServer();
+    ~MpcTrajServer();
+
     void cmdCallback(const ros::TimerEvent &e);
     void trajCmdCallback(const ros::TimerEvent& e);
     void bsplineCallback(traj_utils::BsplineConstPtr msg);
@@ -53,6 +53,7 @@ class MpcTrajServer {
     void distancePerceptionYaw(double &yaw1, double &yaw2, double &d);
     void refinePerceptionTraj(quadrotor_common::Trajectory &, quadrotor_common::Trajectory &);
     Eigen::Quaterniond calculateQfromYawAcc(double &yaw, Eigen::Vector3d &acc);
+    Eigen::Quaterniond calculateQfromYawAcc(Eigen::Vector2d& yaw_vec, Eigen::Vector3d &acc);
     double smooth_function(double d, double d0, double k) {
         return 1.0 / (1.0 + std::exp(-k * (d - d0)));}
     double getAnotherYaw(const quadrotor_common::TrajectoryPoint& p1, const quadrotor_common::TrajectoryPoint& p2);
