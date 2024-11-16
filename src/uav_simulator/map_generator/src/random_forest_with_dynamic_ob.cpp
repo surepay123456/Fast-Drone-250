@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 // #include <pcl/search/kdtree.h>
@@ -31,6 +32,11 @@ uniform_real_distribution<double> rand_w;
 uniform_real_distribution<double> rand_h;
 uniform_real_distribution<double> rand_inf;
 
+uniform_real_distribution<double> rand_pos_x;
+uniform_real_distribution<double> rand_pos_y;
+uniform_real_distribution<double> rand_vel;
+uniform_real_distribution<double> rand_yaw;
+
 ros::Publisher _local_map_pub;
 ros::Publisher _all_map_pub;
 ros::Publisher click_map_pub_;
@@ -43,6 +49,11 @@ double _x_size, _y_size, _z_size;
 double _x_l, _x_h, _y_l, _y_h, _w_l, _w_h, _h_l, _h_h;
 double _z_limit, _sensing_range, _resolution, _sense_rate, _init_x, _init_y;
 double _min_dist;
+
+int dynamic_obj_num;
+double dynamic_vel;
+double dynamic_yaw;
+double rand_x_d, rand_y_d, rand_vel_d, rand_w_d;
 
 bool _map_ok = false;
 bool _has_odom = false;
@@ -271,6 +282,61 @@ void RandomMapGenerateCylinder() {
   _map_ok = true;
 }
 
+void RandomDynamicGenerate(){
+    // generate dynamic obs by dynamic_obj_num and dynamic_vel and dynamic_yaw
+    pcl::PointXYZ pt_random;
+
+    vector<Eigen::Vector2d> obs_position;
+
+    rand_pos_x = uniform_real_distribution<double>(_x_l, _x_h);
+    rand_pos_y = uniform_real_distribution<double>(_y_l, _y_h);
+    rand_vel = uniform_real_distribution<double>(-dynamic_vel, dynamic_vel);
+    rand_yaw = uniform_real_distribution<double>(-dynamic_yaw, dynamic_yaw);
+    
+    for (int i = 0; i < dynamic_obj_num && ros::ok(); i++) {
+        double x, y, vel, yaw;
+        x = rand_pos_x(eng);
+        y = rand_pos_y(eng);
+        vel = rand_vel(eng);
+        yaw = rand_yaw(eng);
+        
+        bool flag_continue = false;
+        for ( auto p : obs_position )
+          if ( (Eigen::Vector2d(x,y) - p).norm() < _min_dist /*metres*/ )
+          {
+            i--;
+            flag_continue = true;
+            break;
+          }
+        if ( flag_continue ) continue;
+
+        obs_position.push_back( Eigen::Vector2d(x,y) );
+
+        x = floor(x / _resolution) * _resolution + _resolution / 2.0;
+        y = floor(y / _resolution) * _resolution + _resolution / 2.0;
+
+        int widNum = ceil(0.5 / _resolution);
+        double radius = 0.5 / 2;
+
+        for (int r = -widNum / 2.0; r < widNum / 2.0; r++)
+          for (int s = -widNum / 2.0; s < widNum / 2.0; s++) {
+            int heiNum = ceil(0.5 / _resolution);
+            for (int t = -20; t < heiNum; t++) {
+              double temp_x = x + (r + 0.5) * _resolution + 1e-2;
+              double temp_y = y + (s + 0.5) * _resolution + 1e-2;
+              double temp_z = (t + 0.5) * _resolution + 1e-2;
+              if ( (Eigen::Vector2d(temp_x,temp_y) - Eigen::Vector2d(x,y)).norm() <= radius )
+              {
+                pt_random.x = temp_x;
+                pt_random.y = temp_y;
+                pt_random.z = temp_z;
+                cloudMap.points.push_back(pt_random);
+              }
+            }
+          }
+    }
+}
+
 void rcvOdometryCallbck(const nav_msgs::Odometry odom) {
   if (odom.child_frame_id == "X" || odom.child_frame_id == "O") return;
   _has_odom = true;
@@ -407,6 +473,11 @@ int main(int argc, char** argv) {
 
   n.param("min_distance", _min_dist, 1.0);
 
+  n.param("DynamicObstacle/obs_num", dynamic_obj_num, 30);
+  n.param("DynamicObstacle/vel", dynamic_vel, 2.0);
+  n.param("DynamicObstacle/yaw", dynamic_yaw, 2.0);
+  
+  
   _x_l = -_x_size / 2.0;
   _x_h = +_x_size / 2.0;
 
@@ -425,6 +496,8 @@ int main(int argc, char** argv) {
 
   // RandomMapGenerate();
   RandomMapGenerateCylinder();
+
+  //  random dynamic obstacles? 
 
   ros::Rate loop_rate(_sense_rate);
 

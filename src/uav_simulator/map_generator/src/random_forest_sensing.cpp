@@ -434,3 +434,9 @@ int main(int argc, char** argv) {
     loop_rate.sleep();
   }
 }
+
+/*
+1. 将一个随机地图的点云保存pcd 建立kdtree
+2. 遍历动态障碍物的位置，固定尺寸，随机速度然后碰到边界进行弹弹弹，查询是否在当前里程计附近区域 保存到local_map_pcd
+3. 发布local_map_pcd  
+*/
