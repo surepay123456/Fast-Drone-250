@@ -5,6 +5,14 @@ set(CMAKE_BUILD_TYPE "Release")
 ADD_COMPILE_OPTIONS(-std=c++11 )
 ADD_COMPILE_OPTIONS(-std=c++14 )
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED TRUE)
+# acados include and lib path
+set(acados_include /home/xep/acados/include)
+set(acados_lib /home/xep/acados/lib)
+set(c_generated_code_path ${PROJECT_SOURCE_DIR}/include/tube_mpc/c_generated_code)
+# 设置链接目录 将libpath加入到链接目录中
+link_directories(${acados_lib})
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.7 REQUIRED)
@@ -37,6 +45,15 @@ include_directories(
   ${catkin_INCLUDE_DIRS} 
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
+  # acados include
+  ${acados_include}/blasfeo/include/
+  ${acados_include}/hpipm/include/
+  ${acados_include}/
+  ${acados_include}/acados/
+  ${c_generated_code_path}/
+  ${c_generated_code_path}/augmented_yaw_model_constraints/
+  ${c_generated_code_path}/augmented_yaw_model_model/
+
 )
 
 
