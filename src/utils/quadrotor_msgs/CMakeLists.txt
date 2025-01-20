@@ -50,6 +50,8 @@ add_message_files(
   #RPQ msg 
   Trajectory.msg
   TrajectoryPoint.msg
+
+  ControlCommand.msg
 )
 
 generate_messages(
