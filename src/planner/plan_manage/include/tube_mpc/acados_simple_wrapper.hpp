@@ -37,6 +37,9 @@ class AcadosSimpleWrapper
         void set_initial_conditions(const Eigen::VectorXd& x_init, const Eigen::VectorXd& u0);  // Function to set initial conditions
         void set_reference_trajectory(const Eigen::MatrixXd& ref_traj);  // Function to set the reference trajectory
         void set_params(const Eigen::VectorXd& p);  // Set parameters for the solver
+        void set_control_bounds(const Eigen::VectorXd& lbu, const Eigen::VectorXd& ubu);  // Set control bounds
+        void set_cost_weights(const Eigen::VectorXd& Q, const Eigen::VectorXd& R);  // Set cost weights
+        void set_cost_weights_end(const Eigen::VectorXd& Q);  // Set cost weights for the final state
         void get_results(Eigen::MatrixXd& x, Eigen::MatrixXd& u);  // Get the results of the optimization 
         void print_results();  // Print solution after optimization
     private:
@@ -51,12 +54,22 @@ class AcadosSimpleWrapper
         int N_;  // Number of shooting points
 
         // Initial state and control input values
-        double* x_init_;
-        double* u0_;
+        double x_init_[NX];
+        double u0_[NU];
         Eigen::MatrixXd ref_traj_;  // Reference trajectory
-        Eigen::VectorXd p_;  // Parameters for the solver
+        Eigen::VectorXd p_;  // Parameters for the solver p_[2] [3] are the reference point
         double xtraj_[NX * (NSTEPS + 1)];
         double utraj_[NU * NSTEPS];
+        
+        // constraints
+        double lbu_[NU];
+        double ubu_[NU];
+        
+        // cost matrix
+        Eigen::Matrix<double, NX_CURRENT, NX_CURRENT> Q_;
+        Eigen::Matrix<double, NU, NU> R_;
+        Eigen::Matrix<double, NY, NY> W_;
+        Eigen::Matrix<double, NX_CURRENT, NX_CURRENT> W_end_;
 };
 
 

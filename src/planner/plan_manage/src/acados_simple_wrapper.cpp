@@ -38,8 +38,11 @@ AcadosSimpleWrapper::~AcadosSimpleWrapper()
 }
 
 void AcadosSimpleWrapper::set_initial_conditions(const Eigen::VectorXd &x_init, const Eigen::VectorXd &u0){
-    x_init_ = new double[x_init.size()];  // 根据 x_init 的大小分配内存
-    u0_ = new double[u0.size()];          // 根据 u0 的大小分配内存
+    if (x_init.size() != NX || u0.size() != NU)
+    {
+        printf("Initial conditions are not correct.\n");
+        return;
+    }
     // Copy the data from Eigen to the arrays
     std::memcpy(x_init_, x_init.data(), x_init.size() * sizeof(double));
     std::memcpy(u0_, u0.data(), u0.size() * sizeof(double));
@@ -55,16 +58,23 @@ void AcadosSimpleWrapper::set_initial_conditions(const Eigen::VectorXd &x_init, 
 
 void AcadosSimpleWrapper::set_reference_trajectory(const Eigen::MatrixXd& ref_traj)
 {
+    //    Eigen::MatrixXd ref_traj(NX_CURRENT, NSTEPS);
+    if (ref_traj.size() != NX_CURRENT * NSTEPS)  // Check if the size of the reference trajectory is correct
+    {
+        printf("Reference trajectory size is not correct.\n");
+        return;
+    }
     ref_traj_ = ref_traj;
     for (int i = 1; i < N_; i++) {
         Eigen::VectorXd yref(NY);
         yref.setZero();
-        yref << ref_traj_.col(i - 1), 0, 0, 0;
+        yref << ref_traj_.col(i - 1), 0, 0, 0; // add zeros for the last three elements control input
         ocp_nlp_cost_model_set(nlp_config_, nlp_dims_, nlp_in_, i, "yref", yref.data());
     }
     ocp_nlp_cost_model_set(nlp_config_, nlp_dims_, nlp_in_, N_, "yref", ref_traj_.col(N_ - 1).data());
 }
 
+// must be called after set_reference_trajectory
 void AcadosSimpleWrapper::set_params(const Eigen::VectorXd& p)
 {
     p_ = p;
@@ -78,17 +88,57 @@ void AcadosSimpleWrapper::set_params(const Eigen::VectorXd& p)
     }
 }
 
+void AcadosSimpleWrapper::set_control_bounds(const Eigen::VectorXd& lbu, const Eigen::VectorXd& ubu){
+    if (lbu.size() != NU || ubu.size() != NU) {
+        printf("Control bounds are not correct.\n");
+        return;
+    }
+    for (int i = 0; i < NU; i++) {
+        lbu_[i] = lbu(i);
+        ubu_[i] = ubu(i);
+    } 
+    for (int i = 0; i < N_; i++) {
+        ocp_nlp_constraints_model_set(nlp_config_, nlp_dims_, nlp_in_, i, "lbu", lbu_);
+        ocp_nlp_constraints_model_set(nlp_config_, nlp_dims_, nlp_in_, i, "ubu", ubu_);
+    }
+}
+void AcadosSimpleWrapper::set_cost_weights(const Eigen::VectorXd &Q,
+                                           const Eigen::VectorXd &R) {
+    if (Q.size() != NX_CURRENT || R.size() != NU) {
+        printf("Cost weights are not correct.\n");
+        return;
+    }
+    Q_ = Q.asDiagonal();
+    R_ = R.asDiagonal();
+    W_ = Eigen::MatrixXd::Zero(NY, NY);
+    W_.block(0, 0, NX_CURRENT, NX_CURRENT) = Q_;
+    W_.block(NX_CURRENT, NX_CURRENT, NU, NU) = R_;
+    for (int i = 0; i < N_; i++) {
+        ocp_nlp_cost_model_set(nlp_config_, nlp_dims_, nlp_in_, i, "W", W_.data());
+    }
+    ocp_nlp_cost_model_set(nlp_config_, nlp_dims_, nlp_in_, N_, "W", Q_.data());
+}
+
+void AcadosSimpleWrapper::set_cost_weights_end(const Eigen::VectorXd &Q) {
+    if (Q.size() != NX_CURRENT) {
+        printf("End cost weights are not correct.\n");
+        return;
+    }
+    W_end_ = Q.asDiagonal();
+    ocp_nlp_cost_model_set(nlp_config_, nlp_dims_, nlp_in_, N_, "W", W_end_.data());
+}
+
 int AcadosSimpleWrapper::solve()
 {
     int status = augmented_yaw_model_acados_solve(acados_ocp_capsule_);
-        if (status == ACADOS_SUCCESS)
+    if (status == ACADOS_SUCCESS)
     {
-        printf("augmented_yaw_model_acados_solve(): SUCCESS!\n");
+        // printf("augmented_yaw_model_acados_solve(): SUCCESS!\n");
     }
     else
     {
         printf("augmented_yaw_model_acados_solve() failed with status %d.\n", status);
-            // augmented_yaw_model_acados_print_stats(acados_ocp_capsule_);
+        // augmented_yaw_model_acados_print_stats(acados_ocp_capsule_);
     }
         // double xtraj[NX * (N_ + 1)], utraj[NU * N_];
     for (int ii = 0; ii <= nlp_dims_->N; ii++) {
@@ -131,8 +181,12 @@ void AcadosSimpleWrapper::print_results()
 }
 
 void AcadosSimpleWrapper::get_results(Eigen::MatrixXd &x, Eigen::MatrixXd &u){
-    x.resize(NX, N_ + 1);
-    u.resize(NU, N_);
+    if (x.size() != NX * (N_ + 1) || u.size() != NU * N_) {
+        printf("The size of the matrices is not correct.\n");
+        return; 
+    }
+    // x.resize(NX, N_ + 1);
+    // u.resize(NU, N_);
     for (int i = 0; i <= N_; i++) {
         for (int j = 0; j < NX; j++) {
             x(j, i) = xtraj_[i * NX + j];

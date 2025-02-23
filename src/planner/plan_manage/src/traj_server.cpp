@@ -1,13 +1,21 @@
 #include "bspline_opt/uniform_bspline.h"
 #include "nav_msgs/Odometry.h"
+#include "ros/subscriber.h"
+#include "ros/time.h"
+#include "ros/timer.h"
 #include "traj_utils/Bspline.h"
 #include "quadrotor_msgs/PositionCommand.h"
 #include "std_msgs/Empty.h"
+#include "utils/types.h"
 #include "visualization_msgs/Marker.h"
+#include <Eigen/src/Core/Matrix.h>
+#include <iostream>
 #include <ros/ros.h>
-
+#include <vector>
+#include "acados_simple_wrapper.hpp"
+#include "dbg.h"
 ros::Publisher pos_cmd_pub;
-
+ros::Publisher optimal_list_pub;
 quadrotor_msgs::PositionCommand cmd;
 double pos_gain[3] = {0, 0, 0};
 double vel_gain[3] = {0, 0, 0};
@@ -15,6 +23,8 @@ double vel_gain[3] = {0, 0, 0};
 using ego_planner::UniformBspline;
 
 bool receive_traj_ = false;
+bool receive_odom_ = false;
+Eigen::VectorXd cmd_x_;
 vector<UniformBspline> traj_;
 double traj_duration_;
 ros::Time start_time_;
@@ -23,6 +33,62 @@ int traj_id_;
 // yaw control
 double last_yaw_, last_yaw_dot_;
 double time_forward_;
+
+// odom current state x, y, vx, vy, ax, az, yaw
+Eigen::VectorXd cur_state(7);
+AcadosSimpleWrapper acados_wrapper(NSTEPS);
+  void displayMarkerList(ros::Publisher &pub, const vector<Eigen::Vector3d> &list, double scale,
+                                                Eigen::Vector4d color, int id, bool show_sphere /* = true */ )
+  {
+    visualization_msgs::Marker sphere, line_strip;
+    sphere.header.frame_id = line_strip.header.frame_id = "world";
+    sphere.header.stamp = line_strip.header.stamp = ros::Time::now();
+    sphere.type = visualization_msgs::Marker::SPHERE_LIST;
+    line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+    sphere.action = line_strip.action = visualization_msgs::Marker::ADD;
+    sphere.id = id;
+    line_strip.id = id + 1000;
+
+    sphere.pose.orientation.w = line_strip.pose.orientation.w = 1.0;
+    sphere.color.r = line_strip.color.r = color(0);
+    sphere.color.g = line_strip.color.g = color(1);
+    sphere.color.b = line_strip.color.b = color(2);
+    sphere.color.a = line_strip.color.a = color(3) > 1e-5 ? color(3) : 1.0;
+    sphere.scale.x = scale;
+    sphere.scale.y = scale;
+    sphere.scale.z = scale;
+    line_strip.scale.x = scale / 2;
+    geometry_msgs::Point pt;
+    for (int i = 0; i < int(list.size()); i++)
+    {
+      pt.x = list[i](0);
+      pt.y = list[i](1);
+      pt.z = list[i](2);
+      //if (show_sphere) sphere.points.push_back(pt);
+      line_strip.points.push_back(pt);
+    }
+    //if (show_sphere) pub.publish(sphere);
+    pub.publish(line_strip);
+  }
+  void displayOptimalList(Eigen::MatrixXd optimal_pts, int id)
+  {
+
+    // if (optimal_list_pub.getNumSubscribers() == 0)
+    // {
+    //   return;
+    // }
+    vector<Eigen::Vector3d> list;
+    for (int i = 0; i < optimal_pts.cols(); i++)
+    {
+      // Eigen::Vector3d pt = optimal_pts.col(i).transpose();
+      Eigen::Vector3d pt = optimal_pts.block(0, i, 3, 1);
+      pt(2) = 1.5; 
+      list.push_back(pt);
+    }
+    Eigen::Vector4d color(0, 0, 0, 1);
+    displayMarkerList(optimal_list_pub, list, 0.15, color, id, true);
+  }
+
 
 void bsplineCallback(traj_utils::BsplineConstPtr msg)
 {
@@ -67,6 +133,32 @@ void bsplineCallback(traj_utils::BsplineConstPtr msg)
   traj_duration_ = traj_[0].getTimeSum();
 
   receive_traj_ = true;
+}
+
+void odomCallback(const nav_msgs::OdometryConstPtr &msg)
+{
+  // ROS_INFO("receive odom");
+  cur_state(0) = msg->pose.pose.position.x;
+  cur_state(1) = msg->pose.pose.position.y;
+  // cur_state(2) = msg->pose.pose.position.z;
+
+  cur_state(2) = msg->twist.twist.linear.x;
+  cur_state(3) = msg->twist.twist.linear.y;
+  // cur_state(5) = msg->twist.twist.linear.z;
+  cur_state(4) = 0;
+  cur_state(5) = 0;
+  Eigen::Quaterniond q;
+  q.x() = msg->pose.pose.orientation.x;
+  q.y() = msg->pose.pose.orientation.y;
+  q.z() = msg->pose.pose.orientation.z;
+  q.w() = msg->pose.pose.orientation.w;
+
+  // Eigen::Vector3d euler = q.toRotationMatrix().eulerAngles(0, 1, 2);
+  // cur_state(6) = euler(2);
+  cur_state(6) = 0;
+  if (receive_odom_ == false) {
+      receive_odom_ = true;
+  }
 }
 
 std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, ros::Time &time_now, ros::Time &time_last)
@@ -161,12 +253,82 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, ros:
   return yaw_yawdot;
 }
 
+void tubeMpcCallback(const ros::TimerEvent &e)
+{
+  if (!receive_traj_ || !receive_odom_)
+      return;
+  Eigen::Vector3d u0 = Eigen::Vector3d::Zero();
+  // std::cout << "come in tubeMpcCallback" << std::endl;
+  // acados_wrapper.set_initial_conditions(cur_state, u0);
+  /********************************************* */
+  Eigen::MatrixXd ref_traj(NX_CURRENT, NSTEPS);
+  ros::Time time_now = ros::Time::now();
+  double dt = 0.1;
+  double t_cur = (time_now - start_time_).toSec();
+  for (int i = 0; i < NSTEPS; ++i) {
+      double t = t_cur + i * dt;
+      Eigen::Vector3d pos(Eigen::Vector3d::Zero()), vel(Eigen::Vector3d::Zero()), acc(Eigen::Vector3d::Zero());
+      double yaw = 0.0; 
+      // 将计算结果存储到参考轨迹矩阵中
+      if (t < traj_duration_ && t >= 0.0) {
+          pos = traj_[0].evaluateDeBoorT(t);
+          vel = traj_[1].evaluateDeBoorT(t);
+          acc = traj_[2].evaluateDeBoorT(t);
+          // yaw是vel 的方向 并且用弧度制表示 当vel = (1, 0) yaw = 0
+          // yaw = atan2(vel(1), vel(0));
+          yaw = atan2(vel(1), vel(0));
+      } else if (t >= traj_duration_) {
+          pos = traj_[0].evaluateDeBoorT(traj_duration_);
+          vel = traj_[1].evaluateDeBoorT(traj_duration_);
+          acc = traj_[2].evaluateDeBoorT(traj_duration_);
+          yaw= atan2(vel(1), vel(0));
+      }
+      else {
+          std::cout << "[Traj server]: invalid time." << std::endl;
+      }
+      ref_traj(0, i) = pos(0);
+      ref_traj(1, i) = pos(1);
+      ref_traj(2, i) = vel(0);
+      ref_traj(3, i) = vel(1);
+      ref_traj(4, i) = acc(0);
+      ref_traj(5, i) = acc(1);
+      ref_traj(6, i) = yaw;
+  }
+  acados_wrapper.set_reference_trajectory(ref_traj);
+  /********************************************* */
+  Eigen::VectorXd x_init(NX);
+  x_init << ref_traj.col(0) , ref_traj(0, 0), ref_traj(1, 0), ref_traj(6, 0);
+  acados_wrapper.set_initial_conditions(x_init, u0);
+  // set initial states? 
+
+  // set the parameters
+  Eigen::VectorXd p(NP);
+  // 视场角 视场距离 参考点x 参考点y tube半径平方
+  p << 0.5, 3, ref_traj(0, 0), ref_traj(1, 0), 0.25;
+  acados_wrapper.set_params(p);
+
+  // solve the optimal control problem
+  int status = acados_wrapper.solve();
+  Eigen::MatrixXd x(NX, NSTEPS + 1);
+  Eigen::MatrixXd u(NU, NSTEPS);
+  acados_wrapper.get_results(x, u);
+  // dbg(u); 
+  if (status != ACADOS_SUCCESS) {
+    // dbg(ref_traj);
+    // dbg(x);
+  } 
+  cmd_x_ = x.col(0);
+  displayOptimalList(x, 20);
+}
+
 void cmdCallback(const ros::TimerEvent &e)
 {
   /* no publishing before receive traj_ */
   if (!receive_traj_)
     return;
-
+  if (cmd_x_.size() == 0) {
+    return;
+  }
   ros::Time time_now = ros::Time::now();
   double t_cur = (time_now - start_time_).toSec();
 
@@ -214,17 +376,24 @@ void cmdCallback(const ros::TimerEvent &e)
   cmd.position.x = pos(0);
   cmd.position.y = pos(1);
   cmd.position.z = pos(2);
+  cmd.position.x = cmd_x_(0);
+  cmd.position.y = cmd_x_(1);
 
   cmd.velocity.x = vel(0);
   cmd.velocity.y = vel(1);
   cmd.velocity.z = vel(2);
+  cmd.velocity.x = cmd_x_(2);
+  cmd.velocity.y = cmd_x_(3);
 
   cmd.acceleration.x = acc(0);
   cmd.acceleration.y = acc(1);
   cmd.acceleration.z = acc(2);
+  cmd.acceleration.x = cmd_x_(4);
+  cmd.acceleration.y = cmd_x_(5);
 
   cmd.yaw = yaw_yawdot.first;
   cmd.yaw_dot = yaw_yawdot.second;
+  cmd.yaw = cmd_x_(6);
 
   last_yaw_ = cmd.yaw;
 
@@ -238,10 +407,13 @@ int main(int argc, char **argv)
   ros::NodeHandle nh("~");
 
   ros::Subscriber bspline_sub = nh.subscribe("planning/bspline", 10, bsplineCallback);
+  ros::Subscriber odom_sub = nh.subscribe("odom", 10, odomCallback);
 
   pos_cmd_pub = nh.advertise<quadrotor_msgs::PositionCommand>("/position_cmd", 50);
+  optimal_list_pub = nh.advertise<visualization_msgs::Marker>("traj_server_tubempc", 2);
 
   ros::Timer cmd_timer = nh.createTimer(ros::Duration(0.01), cmdCallback);
+  ros::Timer tube_mpc_timer = nh.createTimer(ros::Duration(0.1), tubeMpcCallback);
 
   /* control parameter */
   cmd.kx[0] = pos_gain[0];
@@ -259,6 +431,25 @@ int main(int argc, char **argv)
   ros::Duration(1.0).sleep();
 
   ROS_WARN("[Traj server]: ready.");
+  // set the cost  Q and R
+  Eigen::VectorXd Q(NX_CURRENT);
+  Q << 1e3, 1e3, 1e3, 1e3, 1e3, 1e3, 1e0;
+  Eigen::VectorXd R(NU);
+  R << 1e1, 1e1, 1e1;
+  acados_wrapper.set_cost_weights(Q, R);
+  // set the end cost Q
+  Eigen::VectorXd Q_end(NX_CURRENT);
+  Q_end << 1e2, 1e2, 1e3, 1e3, 1e3, 1e3, 1e0;
+  acados_wrapper.set_cost_weights_end(Q_end);
+  // set the control bounds
+  Eigen::VectorXd lbu(NU);
+  double max_jerk = 6.0;
+  double max_w = 6.0;
+  lbu << -max_jerk, -max_jerk, -max_w;
+  Eigen::VectorXd ubu(NU);
+  ubu << max_jerk, max_jerk, max_w;
+  acados_wrapper.set_control_bounds(lbu, ubu);
+  ROS_WARN("[Tube Mpc]: ready.");
 
   ros::spin();
 

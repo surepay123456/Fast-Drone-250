@@ -3,3 +3,6 @@
 build/
 devel/
 logs/
+c_generated_code/
+my_examples/
+acados_ocp.json
