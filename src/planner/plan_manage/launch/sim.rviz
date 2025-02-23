@@ -33,7 +33,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: simulation_map
+    SyncSource: map inflate
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -121,7 +121,7 @@ Visualization Manager:
               Marker Topic: /drone_0_ego_planner_node/optimal_list
               Name: optimal_traj
               Namespaces:
-                "": true
+                {}
               Queue Size: 100
               Value: true
             - Class: rviz/Marker
@@ -171,14 +171,14 @@ Visualization Manager:
             - Alpha: 1
               Autocompute Intensity Bounds: true
               Autocompute Value Bounds:
-                Max Value: 2.8399999141693115
-                Min Value: 0.03999999910593033
+                Max Value: 0.2150000035762787
+                Min Value: 0.06499999761581421
                 Value: true
               Axis: Z
               Channel Name: intensity
               Class: rviz/PointCloud2
               Color: 29; 108; 212
-              Color Transformer: FlatColor
+              Color Transformer: AxisColor
               Decay Time: 0
               Enabled: true
               Invert Rainbow: false
@@ -205,7 +205,7 @@ Visualization Manager:
               Marker Topic: /drone_0_odom_visualization/robot
               Name: robot
               Namespaces:
-                mesh: true
+                {}
               Queue Size: 100
               Value: true
             - Class: rviz/Image
@@ -241,7 +241,7 @@ Visualization Manager:
       Marker Topic: /drone_0_traj_server/traj_server_tubempc
       Name: Marker
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -271,7 +271,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 35.34972381591797
+      Distance: 21.199066162109375
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1

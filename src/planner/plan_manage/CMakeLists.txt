@@ -125,6 +125,7 @@ set(CMAKE_C_STANDARD_REQUIRED TRUE)
 set(acados_include /home/xep/acados/include)
 set(acados_lib /home/xep/acados/lib)
 set(c_generated_code_path ${PROJECT_SOURCE_DIR}/include/tube_mpc/c_generated_code)
+set(c_generated_code_path2 ${PROJECT_SOURCE_DIR}/include/perception_mpc/c_generated_code)
 
 # 设置链接目录 将libpath加入到链接目录中
 link_directories(${acados_lib})
@@ -159,6 +160,7 @@ include_directories(
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
   include/tube_mpc
+  include/perception_mpc
   ${acados_include}/blasfeo/include/
   ${acados_include}/hpipm/include/
   ${acados_include}/
@@ -166,6 +168,9 @@ include_directories(
   ${c_generated_code_path}/
   ${c_generated_code_path}/augmented_yaw_model_constraints/
   ${c_generated_code_path}/augmented_yaw_model_model/
+  ${c_generated_code_path2}/quad_point_2d_with_yaw_constraints/
+  ${c_generated_code_path2}/quad_point_2d_with_yaw_model/
+  ${c_generated_code_path2}/quad_point_2d_with_yaw_cost/
 )
 
 add_executable(ego_planner_node
@@ -178,8 +183,8 @@ target_link_libraries(ego_planner_node
 )
 
 
-add_executable(mpc_traj_server_node src/mpc_traj_server_node.cpp src/mpc_traj_server.cpp)
-target_link_libraries(mpc_traj_server_node ${catkin_LIBRARIES})
+# add_executable(mpc_traj_server_node src/mpc_traj_server_node.cpp src/mpc_traj_server.cpp)
+# target_link_libraries(mpc_traj_server_node ${catkin_LIBRARIES})
 
 file(GLOB AUGMENTED_YAW_MODEL_MODEL_SRCS
     ${c_generated_code_path}/augmented_yaw_model_model/*.c
@@ -196,6 +201,21 @@ target_link_libraries(acados_ocp_solver_lib acados hpipm blasfeo m)
 # add_library(acados_wrapper_lib SHARED src/acados_mpc_wrapper.cpp)
 # target_link_libraries(acados_wrapper_lib acados_ocp_solver_lib)
 
+file(GLOB QUAD_POINT_2D_WITH_YAW_MODEL_SRCS
+    ${c_generated_code_path2}/quad_point_2d_with_yaw_model/*.c
+)
+file(GLOB QUAD_POINT_2D_WITH_YAW_CONSTRAINTS_SRCS
+    ${c_generated_code_path2}/quad_point_2d_with_yaw_constraints/*.c
+)
+file(GLOB QUAD_POINT_2D_WITH_YAW_COST_SRCS
+    ${c_generated_code_path2}/quad_point_2d_with_yaw_cost/*.c
+)
+set(MODEL_SRCS2 ${QUAD_POINT_2D_WITH_YAW_MODEL_SRCS})
+set(OCP_SRCS2 ${QUAD_POINT_2D_WITH_YAW_CONSTRAINTS_SRCS} ${QUAD_POINT_2D_WITH_YAW_COST_SRCS} ${c_generated_code_path2}/acados_solver_quad_point_2d_with_yaw.c)
+add_library(acados_ocp_solver_lib2 SHARED ${MODEL_SRCS2} ${OCP_SRCS2})
+target_link_libraries(acados_ocp_solver_lib2 acados hpipm blasfeo m)
+
+
 # add_executable(acados_mpc_test src/main_acados_test.cpp)
 # target_link_libraries(acados_mpc_test acados_wrapper_lib ${catkin_LIBRARIES})
 
@@ -207,7 +227,13 @@ target_link_libraries(acados_simple_wrapper acados_ocp_solver_lib)
 add_executable(main_simple_wrapper_test src/main_simple_wrapper_test.cpp)
 target_link_libraries(main_simple_wrapper_test acados_simple_wrapper ${catkin_LIBRARIES})
 
+add_library(perception_wrapper SHARED src/perception_mpc_wrapper.cpp)
+target_link_libraries(perception_wrapper acados_ocp_solver_lib2 ${catkin_LIBRARIES})
+
+add_executable(main_perception_mpc_test src/main_perception_wrapper_test.cpp)
+target_link_libraries(main_perception_mpc_test perception_wrapper ${catkin_LIBRARIES})
+
 
 add_executable(traj_server src/traj_server.cpp)
-target_link_libraries(traj_server acados_simple_wrapper ${catkin_LIBRARIES})
+target_link_libraries(traj_server perception_wrapper ${catkin_LIBRARIES})
 

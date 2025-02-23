@@ -12,7 +12,8 @@
 #include <iostream>
 #include <ros/ros.h>
 #include <vector>
-#include "acados_simple_wrapper.hpp"
+// #include "acados_simple_wrapper.hpp"
+#include "perception_mpc_wrapper.hpp"
 #include "dbg.h"
 ros::Publisher pos_cmd_pub;
 ros::Publisher optimal_list_pub;
@@ -36,58 +37,59 @@ double time_forward_;
 
 // odom current state x, y, vx, vy, ax, az, yaw
 Eigen::VectorXd cur_state(7);
-AcadosSimpleWrapper acados_wrapper(NSTEPS);
-  void displayMarkerList(ros::Publisher &pub, const vector<Eigen::Vector3d> &list, double scale,
-                                                Eigen::Vector4d color, int id, bool show_sphere /* = true */ )
-  {
-    visualization_msgs::Marker sphere, line_strip;
-    sphere.header.frame_id = line_strip.header.frame_id = "world";
-    sphere.header.stamp = line_strip.header.stamp = ros::Time::now();
-    sphere.type = visualization_msgs::Marker::SPHERE_LIST;
-    line_strip.type = visualization_msgs::Marker::LINE_STRIP;
-    sphere.action = line_strip.action = visualization_msgs::Marker::ADD;
-    sphere.id = id;
-    line_strip.id = id + 1000;
+// AcadosSimpleWrapper acados_wrapper(NSTEPS);
+AcadosPerceptionWrapper perception_wrapper(NSTEPS);
+void displayMarkerList(ros::Publisher &pub, const vector<Eigen::Vector3d> &list, double scale,
+                                            Eigen::Vector4d color, int id, bool show_sphere /* = true */ )
+{
+  visualization_msgs::Marker sphere, line_strip;
+  sphere.header.frame_id = line_strip.header.frame_id = "world";
+  sphere.header.stamp = line_strip.header.stamp = ros::Time::now();
+  sphere.type = visualization_msgs::Marker::SPHERE_LIST;
+  line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+  sphere.action = line_strip.action = visualization_msgs::Marker::ADD;
+  sphere.id = id;
+  line_strip.id = id + 1000;
 
-    sphere.pose.orientation.w = line_strip.pose.orientation.w = 1.0;
-    sphere.color.r = line_strip.color.r = color(0);
-    sphere.color.g = line_strip.color.g = color(1);
-    sphere.color.b = line_strip.color.b = color(2);
-    sphere.color.a = line_strip.color.a = color(3) > 1e-5 ? color(3) : 1.0;
-    sphere.scale.x = scale;
-    sphere.scale.y = scale;
-    sphere.scale.z = scale;
-    line_strip.scale.x = scale / 2;
-    geometry_msgs::Point pt;
-    for (int i = 0; i < int(list.size()); i++)
-    {
-      pt.x = list[i](0);
-      pt.y = list[i](1);
-      pt.z = list[i](2);
-      //if (show_sphere) sphere.points.push_back(pt);
-      line_strip.points.push_back(pt);
-    }
-    //if (show_sphere) pub.publish(sphere);
-    pub.publish(line_strip);
-  }
-  void displayOptimalList(Eigen::MatrixXd optimal_pts, int id)
+  sphere.pose.orientation.w = line_strip.pose.orientation.w = 1.0;
+  sphere.color.r = line_strip.color.r = color(0);
+  sphere.color.g = line_strip.color.g = color(1);
+  sphere.color.b = line_strip.color.b = color(2);
+  sphere.color.a = line_strip.color.a = color(3) > 1e-5 ? color(3) : 1.0;
+  sphere.scale.x = scale;
+  sphere.scale.y = scale;
+  sphere.scale.z = scale;
+  line_strip.scale.x = scale / 2;
+  geometry_msgs::Point pt;
+  for (int i = 0; i < int(list.size()); i++)
   {
-
-    // if (optimal_list_pub.getNumSubscribers() == 0)
-    // {
-    //   return;
-    // }
-    vector<Eigen::Vector3d> list;
-    for (int i = 0; i < optimal_pts.cols(); i++)
-    {
-      // Eigen::Vector3d pt = optimal_pts.col(i).transpose();
-      Eigen::Vector3d pt = optimal_pts.block(0, i, 3, 1);
-      pt(2) = 1.5; 
-      list.push_back(pt);
-    }
-    Eigen::Vector4d color(0, 0, 0, 1);
-    displayMarkerList(optimal_list_pub, list, 0.15, color, id, true);
+    pt.x = list[i](0);
+    pt.y = list[i](1);
+    pt.z = list[i](2);
+    //if (show_sphere) sphere.points.push_back(pt);
+    line_strip.points.push_back(pt);
   }
+  //if (show_sphere) pub.publish(sphere);
+  pub.publish(line_strip);
+}
+void displayOptimalList(Eigen::MatrixXd optimal_pts, int id)
+{
+
+  // if (optimal_list_pub.getNumSubscribers() == 0)
+  // {
+  //   return;
+  // }
+  vector<Eigen::Vector3d> list;
+  for (int i = 0; i < optimal_pts.cols(); i++)
+  {
+    // Eigen::Vector3d pt = optimal_pts.col(i).transpose();
+    Eigen::Vector3d pt = optimal_pts.block(0, i, 3, 1);
+    pt(2) = 1.5; 
+    list.push_back(pt);
+  }
+  Eigen::Vector4d color(0, 0, 0, 1);
+  displayMarkerList(optimal_list_pub, list, 0.15, color, id, true);
+}
 
 
 void bsplineCallback(traj_utils::BsplineConstPtr msg)
@@ -164,7 +166,7 @@ void odomCallback(const nav_msgs::OdometryConstPtr &msg)
 std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, ros::Time &time_now, ros::Time &time_last)
 {
   constexpr double PI = 3.1415926;
-  constexpr double YAW_DOT_MAX_PER_SEC = PI;
+  constexpr double YAW_DOT_MAX_PER_SEC = PI / 2;
   // constexpr double YAW_DOT_DOT_MAX_PER_SEC = PI;
   std::pair<double, double> yaw_yawdot(0, 0);
   double yaw = 0;
@@ -261,7 +263,7 @@ void tubeMpcCallback(const ros::TimerEvent &e)
   // std::cout << "come in tubeMpcCallback" << std::endl;
   // acados_wrapper.set_initial_conditions(cur_state, u0);
   /********************************************* */
-  Eigen::MatrixXd ref_traj(NX_CURRENT, NSTEPS);
+  Eigen::MatrixXd ref_traj(NX, NSTEPS);
   ros::Time time_now = ros::Time::now();
   double dt = 0.1;
   double t_cur = (time_now - start_time_).toSec();
@@ -294,30 +296,23 @@ void tubeMpcCallback(const ros::TimerEvent &e)
       ref_traj(5, i) = acc(1);
       ref_traj(6, i) = yaw;
   }
-  acados_wrapper.set_reference_trajectory(ref_traj);
+  perception_wrapper.set_reference_trajectory(ref_traj);
   /********************************************* */
   Eigen::VectorXd x_init(NX);
-  x_init << ref_traj.col(0) , ref_traj(0, 0), ref_traj(1, 0), ref_traj(6, 0);
-  acados_wrapper.set_initial_conditions(x_init, u0);
-  // set initial states? 
-
-  // set the parameters
-  Eigen::VectorXd p(NP);
-  // 视场角 视场距离 参考点x 参考点y tube半径平方
-  p << 0.5, 3, ref_traj(0, 0), ref_traj(1, 0), 0.25;
-  acados_wrapper.set_params(p);
+  x_init << ref_traj.col(0);
+  perception_wrapper.set_initial_conditions(x_init, Eigen::VectorXd::Zero(3));
 
   // solve the optimal control problem
-  int status = acados_wrapper.solve();
+  int status = perception_wrapper.solve();
   Eigen::MatrixXd x(NX, NSTEPS + 1);
   Eigen::MatrixXd u(NU, NSTEPS);
-  acados_wrapper.get_results(x, u);
+  perception_wrapper.get_results(x, u);
   // dbg(u); 
   if (status != ACADOS_SUCCESS) {
     // dbg(ref_traj);
     // dbg(x);
   } 
-  cmd_x_ = x.col(0);
+  // cmd_x_ = x.col(0);
   displayOptimalList(x, 20);
 }
 
@@ -326,9 +321,9 @@ void cmdCallback(const ros::TimerEvent &e)
   /* no publishing before receive traj_ */
   if (!receive_traj_)
     return;
-  if (cmd_x_.size() == 0) {
-    return;
-  }
+  // if (cmd_x_.size() == 0) {
+  //   return;
+  // }
   ros::Time time_now = ros::Time::now();
   double t_cur = (time_now - start_time_).toSec();
 
@@ -376,24 +371,24 @@ void cmdCallback(const ros::TimerEvent &e)
   cmd.position.x = pos(0);
   cmd.position.y = pos(1);
   cmd.position.z = pos(2);
-  cmd.position.x = cmd_x_(0);
-  cmd.position.y = cmd_x_(1);
+  // cmd.position.x = cmd_x_(0);
+  // cmd.position.y = cmd_x_(1);
 
   cmd.velocity.x = vel(0);
   cmd.velocity.y = vel(1);
   cmd.velocity.z = vel(2);
-  cmd.velocity.x = cmd_x_(2);
-  cmd.velocity.y = cmd_x_(3);
+  // cmd.velocity.x = cmd_x_(2);
+  // cmd.velocity.y = cmd_x_(3);
 
   cmd.acceleration.x = acc(0);
   cmd.acceleration.y = acc(1);
   cmd.acceleration.z = acc(2);
-  cmd.acceleration.x = cmd_x_(4);
-  cmd.acceleration.y = cmd_x_(5);
+  // cmd.acceleration.x = cmd_x_(4);
+  // cmd.acceleration.y = cmd_x_(5);
 
   cmd.yaw = yaw_yawdot.first;
   cmd.yaw_dot = yaw_yawdot.second;
-  cmd.yaw = cmd_x_(6);
+  // cmd.yaw = cmd_x_(6);
 
   last_yaw_ = cmd.yaw;
 
@@ -431,24 +426,43 @@ int main(int argc, char **argv)
   ros::Duration(1.0).sleep();
 
   ROS_WARN("[Traj server]: ready.");
-  // set the cost  Q and R
-  Eigen::VectorXd Q(NX_CURRENT);
-  Q << 1e3, 1e3, 1e3, 1e3, 1e3, 1e3, 1e0;
+
+  double pi = M_PI;  // Use the constant for pi
+  // set control constraints
+  Eigen::VectorXd lbu(3);
+  Eigen::VectorXd ubu(3);
+  lbu << -50, -50, -pi / 2;
+  ubu << 50, 50, pi / 2;
+  perception_wrapper.set_control_bounds(lbu, ubu);
+
+  //  state cost weights
+  Eigen::VectorXd Q(NX);
+  Q = 1e2 * Eigen::VectorXd::Ones(NX);
+  Q << 1e3, 1e3, 1e1, 1e1, 1e0, 1e0, 1e0;
   Eigen::VectorXd R(NU);
-  R << 1e1, 1e1, 1e1;
-  acados_wrapper.set_cost_weights(Q, R);
-  // set the end cost Q
-  Eigen::VectorXd Q_end(NX_CURRENT);
-  Q_end << 1e2, 1e2, 1e3, 1e3, 1e3, 1e3, 1e0;
-  acados_wrapper.set_cost_weights_end(Q_end);
-  // set the control bounds
-  Eigen::VectorXd lbu(NU);
-  double max_jerk = 6.0;
-  double max_w = 6.0;
-  lbu << -max_jerk, -max_jerk, -max_w;
-  Eigen::VectorXd ubu(NU);
-  ubu << max_jerk, max_jerk, max_w;
-  acados_wrapper.set_control_bounds(lbu, ubu);
+  R =  1e-1 * Eigen::VectorXd::Ones(NU);
+  R << 1e-1, 1e-1, 1e-1;
+  perception_wrapper.set_cost_weights(Q, R);
+  Q[0] = 1e3; 
+  Q[1] = 1e3;
+  perception_wrapper.set_cost_weights_end(Q);
+
+  //  slack cost weights
+  double zl = 1e2;
+  double Zl = 1e4;
+  double zu = 1e1;
+  double Zu = 1e1;
+  perception_wrapper.set_cost_slack_weights(zl, Zl, zu, Zu);
+  double zl_0 = 500;
+  double Zl_0 = 1e3;
+  double zu_0 = 1e1;
+  double Zu_0 = 1e1;
+  perception_wrapper.set_cost_slack_begin_weights(zl_0, Zl_0, zu_0, Zu_0);
+
+  //  constraint parameters set
+  Eigen::VectorXd p(NP);
+  p << pi / 6;  // Field of view
+  perception_wrapper.set_params(p);
   ROS_WARN("[Tube Mpc]: ready.");
 
   ros::spin();
