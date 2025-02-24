@@ -1,5 +1,6 @@
 #include "bspline_opt/uniform_bspline.h"
 #include "nav_msgs/Odometry.h"
+#include "sensor_msgs/Imu.h"
 #include "ros/subscriber.h"
 #include "ros/time.h"
 #include "ros/timer.h"
@@ -25,6 +26,7 @@ using ego_planner::UniformBspline;
 
 bool receive_traj_ = false;
 bool receive_odom_ = false;
+bool receive_imu_ = false;
 Eigen::VectorXd cmd_x_;
 vector<UniformBspline> traj_;
 double traj_duration_;
@@ -74,11 +76,6 @@ void displayMarkerList(ros::Publisher &pub, const vector<Eigen::Vector3d> &list,
 }
 void displayOptimalList(Eigen::MatrixXd optimal_pts, int id)
 {
-
-  // if (optimal_list_pub.getNumSubscribers() == 0)
-  // {
-  //   return;
-  // }
   vector<Eigen::Vector3d> list;
   for (int i = 0; i < optimal_pts.cols(); i++)
   {
@@ -114,15 +111,6 @@ void bsplineCallback(traj_utils::BsplineConstPtr msg)
   UniformBspline pos_traj(pos_pts, msg->order, 0.1);
   pos_traj.setKnot(knots);
 
-  // parse yaw traj
-
-  // Eigen::MatrixXd yaw_pts(msg->yaw_pts.size(), 1);
-  // for (int i = 0; i < msg->yaw_pts.size(); ++i) {
-  //   yaw_pts(i, 0) = msg->yaw_pts[i];
-  // }
-
-  //UniformBspline yaw_traj(yaw_pts, msg->order, msg->yaw_dt);
-
   start_time_ = msg->start_time;
   traj_id_ = msg->traj_id;
 
@@ -139,27 +127,30 @@ void bsplineCallback(traj_utils::BsplineConstPtr msg)
 
 void odomCallback(const nav_msgs::OdometryConstPtr &msg)
 {
-  // ROS_INFO("receive odom");
   cur_state(0) = msg->pose.pose.position.x;
   cur_state(1) = msg->pose.pose.position.y;
-  // cur_state(2) = msg->pose.pose.position.z;
-
   cur_state(2) = msg->twist.twist.linear.x;
   cur_state(3) = msg->twist.twist.linear.y;
-  // cur_state(5) = msg->twist.twist.linear.z;
-  cur_state(4) = 0;
-  cur_state(5) = 0;
+  cur_state(4) = 0; // 加速度需要通过imu 获得
+  cur_state(5) = 0; 
   Eigen::Quaterniond q;
   q.x() = msg->pose.pose.orientation.x;
   q.y() = msg->pose.pose.orientation.y;
   q.z() = msg->pose.pose.orientation.z;
   q.w() = msg->pose.pose.orientation.w;
-
-  // Eigen::Vector3d euler = q.toRotationMatrix().eulerAngles(0, 1, 2);
-  // cur_state(6) = euler(2);
-  cur_state(6) = 0;
+  double yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()), 1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+  cur_state(6) = yaw;
   if (receive_odom_ == false) {
       receive_odom_ = true;
+  }
+}
+
+void imuCallback(const sensor_msgs::ImuConstPtr &msg)
+{
+  cur_state(4) = msg->linear_acceleration.x;
+  cur_state(5) = msg->linear_acceleration.y;
+  if (receive_imu_ == false) {
+      receive_imu_ = true;
   }
 }
 
@@ -257,7 +248,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, ros:
 
 void tubeMpcCallback(const ros::TimerEvent &e)
 {
-  if (!receive_traj_ || !receive_odom_)
+  if (!receive_traj_ || !receive_odom_ || !receive_imu_)
       return;
   Eigen::Vector3d u0 = Eigen::Vector3d::Zero();
   // std::cout << "come in tubeMpcCallback" << std::endl;
@@ -267,6 +258,10 @@ void tubeMpcCallback(const ros::TimerEvent &e)
   ros::Time time_now = ros::Time::now();
   double dt = 0.1;
   double t_cur = (time_now - start_time_).toSec();
+  // if end of traj_, hover
+  if (t_cur >= traj_duration_) {
+      return;
+  }
   for (int i = 0; i < NSTEPS; ++i) {
       double t = t_cur + i * dt;
       Eigen::Vector3d pos(Eigen::Vector3d::Zero()), vel(Eigen::Vector3d::Zero()), acc(Eigen::Vector3d::Zero());
@@ -276,8 +271,6 @@ void tubeMpcCallback(const ros::TimerEvent &e)
           pos = traj_[0].evaluateDeBoorT(t);
           vel = traj_[1].evaluateDeBoorT(t);
           acc = traj_[2].evaluateDeBoorT(t);
-          // yaw是vel 的方向 并且用弧度制表示 当vel = (1, 0) yaw = 0
-          // yaw = atan2(vel(1), vel(0));
           yaw = atan2(vel(1), vel(0));
       } else if (t >= traj_duration_) {
           pos = traj_[0].evaluateDeBoorT(traj_duration_);
@@ -297,13 +290,12 @@ void tubeMpcCallback(const ros::TimerEvent &e)
       ref_traj(6, i) = yaw;
   }
   perception_wrapper.set_reference_trajectory(ref_traj);
-  /********************************************* */
-  Eigen::VectorXd x_init(NX);
-  x_init << ref_traj.col(0);
-  perception_wrapper.set_initial_conditions(x_init, Eigen::VectorXd::Zero(3));
+
+  perception_wrapper.set_initial_conditions(cur_state, Eigen::VectorXd::Zero(3));
 
   // solve the optimal control problem
   int status = perception_wrapper.solve();
+
   Eigen::MatrixXd x(NX, NSTEPS + 1);
   Eigen::MatrixXd u(NU, NSTEPS);
   perception_wrapper.get_results(x, u);
@@ -403,6 +395,7 @@ int main(int argc, char **argv)
 
   ros::Subscriber bspline_sub = nh.subscribe("planning/bspline", 10, bsplineCallback);
   ros::Subscriber odom_sub = nh.subscribe("odom", 10, odomCallback);
+  ros::Subscriber imu_sub = nh.subscribe("imu", 10, imuCallback);
 
   pos_cmd_pub = nh.advertise<quadrotor_msgs::PositionCommand>("/position_cmd", 50);
   optimal_list_pub = nh.advertise<visualization_msgs::Marker>("traj_server_tubempc", 2);
@@ -461,7 +454,7 @@ int main(int argc, char **argv)
 
   //  constraint parameters set
   Eigen::VectorXd p(NP);
-  p << pi / 6;  // Field of view
+  p << pi / 6;  // half of Field of view
   perception_wrapper.set_params(p);
   ROS_WARN("[Tube Mpc]: ready.");
 
