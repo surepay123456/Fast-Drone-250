@@ -16,8 +16,10 @@
 // #include "acados_simple_wrapper.hpp"
 #include "perception_mpc_wrapper.hpp"
 #include "dbg.h"
+#include <quadrotor_common/trajectory.h>
 ros::Publisher pos_cmd_pub;
 ros::Publisher optimal_list_pub;
+ros::Publisher traj_pub_;
 quadrotor_msgs::PositionCommand cmd;
 double pos_gain[3] = {0, 0, 0};
 double vel_gain[3] = {0, 0, 0};
@@ -27,7 +29,8 @@ using ego_planner::UniformBspline;
 bool receive_traj_ = false;
 bool receive_odom_ = false;
 bool receive_imu_ = false;
-Eigen::VectorXd cmd_x_;
+bool init_cmd_x_ = false;
+Eigen::VectorXd cmd_x_(7);
 vector<UniformBspline> traj_;
 double traj_duration_;
 ros::Time start_time_;
@@ -250,9 +253,6 @@ void tubeMpcCallback(const ros::TimerEvent &e)
 {
   if (!receive_traj_ || !receive_odom_ || !receive_imu_)
       return;
-  Eigen::Vector3d u0 = Eigen::Vector3d::Zero();
-  // std::cout << "come in tubeMpcCallback" << std::endl;
-  // acados_wrapper.set_initial_conditions(cur_state, u0);
   /********************************************* */
   Eigen::MatrixXd ref_traj(NX, NSTEPS);
   ros::Time time_now = ros::Time::now();
@@ -279,7 +279,8 @@ void tubeMpcCallback(const ros::TimerEvent &e)
           yaw= atan2(vel(1), vel(0));
       }
       else {
-          std::cout << "[Traj server]: invalid time." << std::endl;
+          // std::cout << "[Traj server]: invalid time." << std::endl;
+          ROS_ERROR("...invalid time");
       }
       ref_traj(0, i) = pos(0);
       ref_traj(1, i) = pos(1);
@@ -293,7 +294,6 @@ void tubeMpcCallback(const ros::TimerEvent &e)
 
   perception_wrapper.set_initial_conditions(cur_state, Eigen::VectorXd::Zero(3));
 
-  // solve the optimal control problem
   int status = perception_wrapper.solve();
 
   Eigen::MatrixXd x(NX, NSTEPS + 1);
@@ -304,8 +304,24 @@ void tubeMpcCallback(const ros::TimerEvent &e)
     // dbg(ref_traj);
     // dbg(x);
   } 
-  // cmd_x_ = x.col(0);
+  // cmd_x_ = x.col(1);
+  //  use quadrotor_common to publish the result
+  // init_cmd_x_ = true;
   displayOptimalList(x, 20);
+  quadrotor_common::Trajectory traj;
+  traj.timestamp = ros::Time::now();
+  // convert the x matrix to a trajectory message
+  for (int i = 0; i < NSTEPS + 1; i++) {
+      quadrotor_common::TrajectoryPoint point;
+      point.time_from_start = ros::Duration(i * dt);
+      point.position = Eigen::Vector3d(x(0, i), x(1, i), 1.0);
+      point.velocity = Eigen::Vector3d(x(2, i), x(3, i), 0);
+      point.acceleration = Eigen::Vector3d(x(4, i), x(5, i), 0);
+      point.heading = x(6, i);
+      point.orientation = Eigen::Quaterniond(Eigen::AngleAxisd(x(6, i), Eigen::Vector3d::UnitZ()));
+      traj.points.push_back(point);
+  }
+  traj_pub_.publish(traj.toRosMessage());
 }
 
 void cmdCallback(const ros::TimerEvent &e)
@@ -313,9 +329,9 @@ void cmdCallback(const ros::TimerEvent &e)
   /* no publishing before receive traj_ */
   if (!receive_traj_)
     return;
-  // if (cmd_x_.size() == 0) {
-  //   return;
-  // }
+  if (init_cmd_x_ == false) {
+    return;
+  }
   ros::Time time_now = ros::Time::now();
   double t_cur = (time_now - start_time_).toSec();
 
@@ -363,20 +379,20 @@ void cmdCallback(const ros::TimerEvent &e)
   cmd.position.x = pos(0);
   cmd.position.y = pos(1);
   cmd.position.z = pos(2);
-  // cmd.position.x = cmd_x_(0);
-  // cmd.position.y = cmd_x_(1);
+  cmd.position.x = cmd_x_(0);
+  cmd.position.y = cmd_x_(1);
 
   cmd.velocity.x = vel(0);
   cmd.velocity.y = vel(1);
   cmd.velocity.z = vel(2);
-  // cmd.velocity.x = cmd_x_(2);
-  // cmd.velocity.y = cmd_x_(3);
+  cmd.velocity.x = cmd_x_(2);
+  cmd.velocity.y = cmd_x_(3);
 
   cmd.acceleration.x = acc(0);
   cmd.acceleration.y = acc(1);
   cmd.acceleration.z = acc(2);
-  // cmd.acceleration.x = cmd_x_(4);
-  // cmd.acceleration.y = cmd_x_(5);
+  cmd.acceleration.x = cmd_x_(4);
+  cmd.acceleration.y = cmd_x_(5);
 
   cmd.yaw = yaw_yawdot.first;
   cmd.yaw_dot = yaw_yawdot.second;
@@ -397,11 +413,12 @@ int main(int argc, char **argv)
   ros::Subscriber odom_sub = nh.subscribe("odom", 10, odomCallback);
   ros::Subscriber imu_sub = nh.subscribe("imu", 10, imuCallback);
 
-  pos_cmd_pub = nh.advertise<quadrotor_msgs::PositionCommand>("/position_cmd", 50);
+  // pos_cmd_pub = nh.advertise<quadrotor_msgs::PositionCommand>("/position_cmd", 50);
   optimal_list_pub = nh.advertise<visualization_msgs::Marker>("traj_server_tubempc", 2);
+  traj_pub_ = nh.advertise<quadrotor_msgs::Trajectory>("/traj", 1);
 
   ros::Timer cmd_timer = nh.createTimer(ros::Duration(0.01), cmdCallback);
-  ros::Timer tube_mpc_timer = nh.createTimer(ros::Duration(0.1), tubeMpcCallback);
+  ros::Timer tube_mpc_timer = nh.createTimer(ros::Duration(0.01), tubeMpcCallback);
 
   /* control parameter */
   cmd.kx[0] = pos_gain[0];
@@ -431,18 +448,18 @@ int main(int argc, char **argv)
   //  state cost weights
   Eigen::VectorXd Q(NX);
   Q = 1e2 * Eigen::VectorXd::Ones(NX);
-  Q << 1e3, 1e3, 1e1, 1e1, 1e0, 1e0, 1e0;
+  // Q << 1e3, 1e3, 1e1, 1e1, 1e0, 1e0, 1e0;
   Eigen::VectorXd R(NU);
   R =  1e-1 * Eigen::VectorXd::Ones(NU);
   R << 1e-1, 1e-1, 1e-1;
   perception_wrapper.set_cost_weights(Q, R);
-  Q[0] = 1e3; 
-  Q[1] = 1e3;
+  // Q[0] = 1e3; 
+  // Q[1] = 1e3;
   perception_wrapper.set_cost_weights_end(Q);
 
   //  slack cost weights
   double zl = 1e2;
-  double Zl = 1e4;
+  double Zl = 1e5;
   double zu = 1e1;
   double Zu = 1e1;
   perception_wrapper.set_cost_slack_weights(zl, Zl, zu, Zu);

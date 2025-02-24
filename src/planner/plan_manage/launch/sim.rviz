@@ -14,6 +14,7 @@ Panels:
         - /drone01/Planning1/drone_path1/Offset1
         - /drone01/Mapping1
         - /drone01/Mapping1/map inflate1
+        - /Odometry1
       Splitter Ratio: 0.43611112236976624
     Tree Height: 686
   - Class: rviz/Selection
@@ -121,7 +122,7 @@ Visualization Manager:
               Marker Topic: /drone_0_ego_planner_node/optimal_list
               Name: optimal_traj
               Namespaces:
-                {}
+                "": true
               Queue Size: 100
               Value: true
             - Class: rviz/Marker
@@ -241,7 +242,7 @@ Visualization Manager:
       Marker Topic: /drone_0_traj_server/traj_server_tubempc
       Name: Marker
       Namespaces:
-        {}
+        "": true
       Queue Size: 100
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -262,7 +263,7 @@ Visualization Manager:
           Value: true
         Value: true
       Enabled: true
-      Keep: 100
+      Keep: 1
       Name: Odometry
       Position Tolerance: 0.10000000149011612
       Queue Size: 10
@@ -275,7 +276,7 @@ Visualization Manager:
         Head Radius: 0.10000000149011612
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
-        Value: Arrow
+        Value: Axes
       Topic: /base_pose_ground_truth
       Unreliable: false
       Value: true
@@ -306,7 +307,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 21.199066162109375
+      Distance: 28.514968872070312
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -314,8 +315,8 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -5.017008304595947
-        Y: -3.1205649375915527
+        X: 0.07578420639038086
+        Y: -3.9826815128326416
         Z: -9.5367431640625e-07
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
@@ -395,7 +396,7 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1102
-  X: 660
-  Y: 27
+  X: 294
+  Y: 52
   depth:
     collapsed: false
